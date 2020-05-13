@@ -1,0 +1,30 @@
+## Interface: 80300
+## Title: |cffFF7D0AArenaTools|r
+## Version: 1.0.0
+## Author: jokair9
+## Notes: Useful tools for Arena Players.
+## SavedVariables: ArenaToolsDB
+
+## LIBS
+
+libs\Ace3\LibStub\LibStub.lua
+libs\Ace3\CallbackHandler-1.0\CallbackHandler-1.0.xml
+libs\Ace3\AceAddon-3.0\AceAddon-3.0.xml
+libs\Ace3\AceEvent-3.0\AceEvent-3.0.xml
+libs\Ace3\AceTimer-3.0\AceTimer-3.0.xml
+libs\Ace3\AceDB-3.0\AceDB-3.0.xml
+libs\Ace3\AceDBOptions-3.0\AceDBOptions-3.0.xml
+libs\Ace3\AceConsole-3.0\AceConsole-3.0.xml
+libs\Ace3\AceGUI-3.0\AceGUI-3.0.xml
+libs\Ace3\AceConfig-3.0\AceConfig-3.0.xml
+libs\Ace3\AceHook-3.0\AceHook-3.0.xml
+libs\Ace3\LibDBIcon-1.0\embeds.xml
+libs\Ace3\LibDBIcon-1.0\LibDBIcon-1.0\lib.xml
+
+## CORE
+
+Core.lua
+Config.lua
+
+Modules\Arena.lua
+Modules\Talents.lua
