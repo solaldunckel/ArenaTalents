@@ -1,90 +1,174 @@
-local _, ArenaTools = ...
-local Talents = ArenaTools:RegisterModule("Talents")
+local _, ArenaTalents = ...
 
-local features = {}
+ArenaTalents = LibStub("AceAddon-3.0"):NewAddon(ArenaTalents, "ArenaTalents")
 
-local font = STANDARD_TEXT_FONT
+local AceConfigDialog = LibStub("AceConfigDialog-3.0")
 
--------------------------------------------------------------------------------
--- Config
--------------------------------------------------------------------------------
+LibStub("AceEvent-3.0"):Embed(ArenaTalents)
+LibStub("AceConsole-3.0"):Embed(ArenaTalents)
+LibStub("AceHook-3.0"):Embed(ArenaTalents)
 
-local talents_defaults = {
-    profile = {
-    }
+ArenaTalents:SetDefaultModuleLibraries("AceEvent-3.0", "AceConsole-3.0", "AceHook-3.0")
+
+local default_config = {
+	profile = {
+		position = { "CENTER", UIParent, "CENTER", 0, 200 },
+		showArena = true,
+		showRC = false,
+		scale = 1,
+		minimap = {
+			hide = true,
+		}
+	}
 }
 
-local talents_config = {
-	title = {
-		type = "description",
-		name = "|cff64b4ffTalents Frame",
-		fontSize = "large",
-		order = 0,
-	},
-	desc = {
-		type = "description",
-		name = "Various useful options.\n",
-		fontSize = "medium",
-		order = 1,
-	},
-}
+function ArenaTalents:SetupOptions()
+	self.options = {
+		type = "group",
+		get = function(info) return self.settings[info[#info]] end,
+		set = function(info, val)
+			self.settings[info[#info]] = val
+		end,
+		args = {
+			desc = {
+				type = "description",
+				name = "Quickly change talents and essences.",
+				fontSize = "medium",
+				order = 1
+			},
+			author = {
+				type = "description",
+				name = "\n|cffffd100Author: |r Kygo @ EU-Hyjal",
+				order = 2
+			},
+			version = {
+				type = "description",
+				name = "|cffffd100Version: |r" .. GetAddOnMetadata("ArenaTalents", "Version") .. "\n",
+				order = 3
+			},
+			showArena = {
+				name = "Show in Arena",
+				desc = "|cffaaaaaaAutomatically shows when entering arena. |r",
+				descStyle = "inline",
+				width = "full",
+				type = "toggle",
+				order = 4,
+			},
+			showRC = {
+				name = "Show for Ready Checks",
+				desc = "|cffaaaaaaAutomatically shows when a ready check is performed. |r",
+				descStyle = "inline",
+				width = "full",
+				type = "toggle",
+				order = 5,
+			},
+			showMB = {
+				name = "Minimap Button",
+				descStyle = "inline",
+				width = "full",
+				type = "toggle",
+				get = function(info) return not self.settings.minimap.hide end,
+				set = function(info, val)
+					self.settings.minimap.hide = val
+					self:MinimapButton()
+				end,
+				order = 6,
+			},
+			scale = {
+				order = 7,
+				name = "Scale",
+				type = "range",
+				min = 0.5,
+				max = 1.5,
+				step = 0.05,
+				isPercent = true,
+				set = function(info, val)
+					self.settings[info[#info]] = val
+					self.frame:SetScale(val)
+				end,
+			},
 
--------------------------------------------------------------------------------
--- Life-cycle
--------------------------------------------------------------------------------
+		}
+	}
 
-function Talents:OnInitialize()
-	self.db = ArenaTools.db:RegisterNamespace("Talents", talents_defaults)
+	LibStub("AceConfig-3.0"):RegisterOptionsTable("ArenaTalents", self.options)
+	LibStub("AceConfigDialog-3.0"):AddToBlizOptions("ArenaTalents", "ArenaTalents")
+end
+
+--
+
+local icon = LibStub("LibDBIcon-1.0")
+
+local ArenaTalentsLDB = LibStub("LibDataBroker-1.1"):NewDataObject("ArenaTalentsMB", {
+	type = "data source",
+	text = "0",
+	icon = "Interface\\PVPFrame\\Icons\\prestige-icon-3",
+})
+
+function ArenaTalentsLDB.OnClick(self, button)
+	if button == "LeftButton" then
+		if not ArenaTalents.frame:IsShown() then
+			ArenaTalents:ShowFrame()
+		else
+			ArenaTalents.frame:Hide()
+		end
+	elseif button == "RightButton" then
+		ArenaTalents:OpenGUI()
+	end
+end
+
+function ArenaTalentsLDB.OnTooltipShow(tooltip)
+	tooltip:AddLine("ArenaTalents")
+	tooltip:AddLine(" ")
+	tooltip:AddLine("Left-Click to show/hide the talent window")
+	tooltip:AddLine("Right-Click to open options panel")
+end
+
+function ArenaTalents:MinimapButton()
+	self.settings.minimap.hide = not self.settings.minimap.hide
+	if self.settings.minimap.hide then
+		icon:Hide("ArenaTalentMB")
+	else
+		icon:Show("ArenaTalentMB")
+	end
+end
+
+---
+
+function ArenaTalents:OnInitialize()
+	self.db = LibStub("AceDB-3.0"):New("ArenaTalentsDB", default_config, true)
+
+	self:SetupOptions()
+
 	self.settings = self.db.profile
 	self.buttons = {}
-	ArenaTools.Config:Register("Talents", talents_config, 14)
 end
 
-function Talents:OnEnable()
-	for name in pairs(features) do
-		self:SyncFeature(name)
-	end
+function ArenaTalents:OnEnable()
+	icon:Register("ArenaTalentMB", ArenaTalentsLDB, self.db.profile.minimap)
+
+	self:MinimapButton()
+	self:RegisterChatCommand("Arena", "OpenGUI")
+	self:RegisterChatCommand("ArenaTalents", "OpenGUI")
+	self:RegisterChatCommand("At", "OpenGUI")
+
 	self:RegisterEvent("PLAYER_LOGIN")
 	self:RegisterEvent("PLAYER_ENTERING_WORLD")
+	self:RegisterEvent("READY_CHECK")
+	self:RegisterEvent("READY_CHECK_CONFIRM")
 end
 
-do
-	local order = 10
-	function Talents:RegisterFeature(name, short, long, default, reload, fn)
-		talents_config[name] = {
-			type = "toggle",
-			name = short,
-			descStyle = "inline",
-			desc = "|cffaaaaaa" .. long,
-			width = "full",
-			get = function() return Talents.settings[name] end,
-			set = function(_, v)
-				Talents.settings[name] = v
-				Talents:SyncFeature(name)
-				if reload then
-					StaticPopup_Show ("ReloadUI_Popup")
-				end
-			end,
-			order = order
-		}
-		talents_defaults.profile[name] = default
-		order = order + 1
-		features[name] = fn
+function ArenaTalents:OpenGUI(cmd)
+	if cmd == "show" then
+		ArenaTalents:ShowFrame()
+	elseif cmd == "hide" then
+		ArenaTalents.frame:Hide()
+	else
+		AceConfigDialog:Open("ArenaTalents")
 	end
 end
 
-function Talents:SyncFeature(name)
-	features[name](Talents.settings[name])
-end
-
-do
-	Talents:RegisterFeature("EnterArena",
-		"Show in Arena",
-		"Opens the talent frame when you enter Arena.",
-		true,
-		true,
-		nil)
-end
+--------- FUNCTIONS ---------
 
 -- PVP TALENTS
 
@@ -97,7 +181,7 @@ local function TalentAlreadyInPairs(table, talentID)
 	return false
 end
 
-function Talents:CreateButtonPVP(index, talentID, parent, slotInfo)
+function ArenaTalents:CreateButtonPVP(index, talentID, parent, slotInfo)
 	local talentID, name, texture, _, _, spellID, _, _, _, known = GetPvpTalentInfoByID(talentID)
 
 	local Button = CreateFrame("Frame", "$parent.Button"..index, parent)
@@ -144,9 +228,7 @@ function Talents:CreateButtonPVP(index, talentID, parent, slotInfo)
 	Button.show = false
 	Button.talentID = talentID
 	Button.spellID = spellID
-	Button.known = known
 	Button.slotIndex = index
-	Button.slotInfo = slotInfo
 	Button:Hide()
 
 	Button:SetScript("OnMouseDown", function(self,button)
@@ -165,29 +247,29 @@ function Talents:CreateButtonPVP(index, talentID, parent, slotInfo)
 	return Button
 end
 
-function Talents:UpdateButtonsPVP(buttons)
+function ArenaTalents:UpdateButtonsPVP(buttons)
 	for i, button in pairs(buttons) do
 		if button.slotIndex and button.type == "pvp" then
-			if button.slotInfo then
-				local talentID, name, texture, _, _, spellID, _, _, _, known = GetPvpTalentInfoByID(button.talentID);
-				button.selectedHighlight:Hide()
-				button.selected:Hide()
-				button.talentID = talentID
-				button.spellID = spellID
-				button.known = known
-				button.texture:SetTexture(texture)
-				button.name:SetText(name)
-				if button.slotInfo and button.slotInfo.selectedTalentID == button.talentID then
-					button.selectedHighlight:Show()
-				elseif button.known or (not button.known and IsSpellKnown(button.spellID)) then
-					button.selected:Show()
-				end
+			local talentID, name, texture, _, _, spellID = GetPvpTalentInfoByID(button.talentID);
+			local slotInfo = C_SpecializationInfo.GetPvpTalentSlotInfo(button.slotIndex)
+			local selectedPvpTalents = C_SpecializationInfo.GetAllSelectedPvpTalentIDs();
+
+			button.selectedHighlight:Hide()
+			button.selected:Hide()
+			button.talentID = talentID
+			button.spellID = spellID
+			button.texture:SetTexture(texture)
+			button.name:SetText(name)
+			if slotInfo and slotInfo.selectedTalentID == button.talentID then
+				button.selectedHighlight:Show()
+			elseif tContains(selectedPvpTalents, button.talentID) then
+				button.selected:Show()
 			end
 		end
 	end
 end
 
-function Talents:CreateIconPVP(index, parent, slotInfo, mainParent)
+function ArenaTalents:CreateIconPVP(index, parent, slotInfo, mainParent)
 	local Icon = CreateFrame("Frame", "$parent.Icon"..index, parent)
 
 	if index == 1 then
@@ -215,7 +297,7 @@ function Talents:CreateIconPVP(index, parent, slotInfo, mainParent)
     Icon.border:Show();
 
 	Icon.slotIndex = index
-	Icon.slotInfo = slotInfo
+	Icon.enabled = slotInfo.enabled
 
 	Icon.ids = {}
 
@@ -231,7 +313,7 @@ function Talents:CreateIconPVP(index, parent, slotInfo, mainParent)
 			GameTooltip:SetPvpTalent(self.talentID, false, GetActiveSpecGroup(true), self.slotIndex);
 		else
 			GameTooltip:SetText(PVP_TALENT_SLOT);
-			if (not self.slotInfo.enabled) then
+			if (not self.enabled) then
 				GameTooltip:AddLine(PVP_TALENT_SLOT_LOCKED:format(C_SpecializationInfo.GetPvpTalentSlotUnlockLevel(self.slotIndex)), RED_FONT_COLOR:GetRGB());
 			else
 				GameTooltip:AddLine(PVP_TALENT_SLOT_EMPTY, GREEN_FONT_COLOR:GetRGB());
@@ -247,34 +329,47 @@ function Talents:CreateIconPVP(index, parent, slotInfo, mainParent)
 	Icon:SetScript("OnMouseUp", function(self, button)
 		if button == "LeftButton" then
 			if self.enabled then
-				Talents:ShowButtonsPVP(Talents.buttons, self.ids, mainParent.droplist, self.slotIndex, mainParent.scroll)
+				ArenaTalents:ShowButtonsPVP(ArenaTalents.buttons, self.ids, mainParent.droplist, self.slotIndex, mainParent.scroll)
 			end
-			Talents:UpdateButtonsPVP(Talents.buttons)
+			ArenaTalents:UpdateButtonsPVP(ArenaTalents.buttons)
 		end
 	end)
 
 	Icon:SetScript("OnDragStart", function(self, button)
-		PickupPvpTalent(self.slotInfo.selectedTalentID)
+		PickupPvpTalent(self.selectedTalentID)
 	end)
 
 	return Icon
 end
 
-function Talents:UpdateIconsPVP(icons)
+local function idAlreadyInPairs(table, id)
+	for k, j in pairs(table) do
+		if id == j then
+			return true
+		end
+	end
+	return false
+end
+
+function ArenaTalents:UpdateIconsPVP(icons)
 	for i, icon in pairs(icons) do
 		local slotInfo = C_SpecializationInfo.GetPvpTalentSlotInfo(icon.slotIndex)
-		table.wipe(icon.ids)
-		for i, j in pairs(slotInfo.availableTalentIDs) do
-			table.insert(icon.ids, j)
+		if slotInfo then
+			for i, j in pairs(slotInfo.availableTalentIDs) do
+				if not idAlreadyInPairs(icon.ids, j) then
+					table.insert(icon.ids, j)
+				end
+			end
 		end
-		icon.enabled = true
+		icon.enabled = slotInfo and slotInfo.enabled
 		icon.border:SetAtlas("pvptalents-talentborder")
-		icon.slotInfo = slotInfo
-		if slotInfo and slotInfo.selectedTalentID then
+		-- icon.slotInfo = slotInfo
+		icon.selectedTalentID = slotInfo and slotInfo.selectedTalentID
+		if icon.selectedTalentID then
 			local talentID, name, texture, selected, available, spellID = GetPvpTalentInfoByID(slotInfo.selectedTalentID)
 			icon.talentID = talentID
 			SetPortraitToTexture(icon.texture, texture)
-		elseif slotInfo and slotInfo.enabled then
+		elseif icon.enabled then
 			icon.talentID = nil
 			icon.texture:SetTexture("Interface/TalentFrame/TalentFrameAtlas")
 			icon.texture:SetAtlas("pvptalents-talentborder-empty", true)
@@ -286,16 +381,18 @@ function Talents:UpdateIconsPVP(icons)
 	end
 end
 
-function Talents:ShowButtonsPVP(buttons, ids, droplist, slotIndex, scrollFrame)
+function ArenaTalents:ShowButtonsPVP(buttons, ids, droplist, slotIndex, scrollFrame)
 	local height = 0
 
 	local button_list = {}
+
+	local slotInfo = C_SpecializationInfo.GetPvpTalentSlotInfo(slotIndex)
+	local selectedPvpTalents = C_SpecializationInfo.GetAllSelectedPvpTalentIDs();
 
 	for i, button in pairs(buttons) do
 		button:Hide()
 		if button.type == "pvp" then
 			button.slotIndex = slotIndex
-			local slotInfo = C_SpecializationInfo.GetPvpTalentSlotInfo(button.slotIndex)
 			for i, talentID in pairs(slotInfo.availableTalentIDs) do
 				if not TalentAlreadyInPairs(self.buttons, talentID) then
 					table.insert(self.buttons, self:CreateButtonPVP(i, talentID, button:GetParent(), slotInfo))
@@ -311,12 +408,14 @@ function Talents:ShowButtonsPVP(buttons, ids, droplist, slotIndex, scrollFrame)
 	end
 
 	table.sort(button_list, function(a, b)
-		if (a and a.isSelected and b and not b.isSelected) then
-			return false
-		elseif (a and not a.isSelected and b and b.isSelected) then
-			return true
+		local selectedOtherA = tContains(selectedPvpTalents, a.talentID) and slotInfo.selectedTalentID ~= a.talentID;
+		local selectedOtherB = tContains(selectedPvpTalents, b.talentID) and slotInfo.selectedTalentID ~= b.talentID;
+
+		if (selectedOtherA ~= selectedOtherB) then
+			return selectedOtherB;
 		end
-		return false
+
+		return a.talentID < b.talentID;
 	end)
 
 	local lastFrame
@@ -336,8 +435,9 @@ function Talents:ShowButtonsPVP(buttons, ids, droplist, slotIndex, scrollFrame)
 
 	droplist:SetHeight(height)
 	droplist:Show()
-
+	self.scrollHolder:SetHeight(260)
 	if height < scrollFrame:GetHeight() then
+		self.scrollHolder:SetHeight(height + 20)
 		scrollFrame.bar:Hide()
 		scrollFrame.upbutton:Hide()
 		scrollFrame.downbutton:Hide()
@@ -348,7 +448,7 @@ function Talents:ShowButtonsPVP(buttons, ids, droplist, slotIndex, scrollFrame)
 	scrollFrame:Show()
 end
 
-function Talents:CreatePvpTalentsFrame(parent)
+function ArenaTalents:CreatePvpTalentsFrame(parent)
 	frame = CreateFrame("Frame", "$parent.PvPTalent", parent)
 
 	frame.icons = {}
@@ -358,7 +458,7 @@ function Talents:CreatePvpTalentsFrame(parent)
 
 		for i, talentID in pairs(slotInfo.availableTalentIDs) do
 			if not TalentAlreadyInPairs(self.buttons, talentID) then
-				table.insert(self.buttons, self:CreateButtonPVP(i, talentID, parent.droplist, slotInfo))
+				table.insert(self.buttons, self:CreateButtonPVP(i, talentID, parent.droplist))
 			end
 		end
 		table.insert(frame.icons, self:CreateIconPVP(slotIndex, frame, slotInfo, parent))
@@ -390,16 +490,16 @@ function Talents:CreatePvpTalentsFrame(parent)
 	frame:SetHeight(height)
 	frame:SetWidth(width)
 
-	frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+	-- frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 	frame:RegisterEvent("PLAYER_TALENT_UPDATE")
 
 	self:UpdateIconsPVP(frame.icons)
 	frame:SetScript("OnEvent", function(self)
-		if Talents.buttons then
-			Talents:UpdateButtonsPVP(Talents.buttons)
+		if ArenaTalents.buttons then
+			ArenaTalents:UpdateButtonsPVP(ArenaTalents.buttons)
 		end
 		if self.icons then
-			Talents:UpdateIconsPVP(self.icons)
+			ArenaTalents:UpdateIconsPVP(self.icons)
 		end
 	end)
 
@@ -408,7 +508,7 @@ end
 
 -- ESSENCE
 
-function Talents:CreateButtonEssence(index, parent, essence)
+function ArenaTalents:CreateButtonEssence(index, parent, essence)
 	local Button = CreateFrame("Frame", "$parent.Button"..index, parent)
 	Button:SetSize(parent:GetWidth(), 35)
 
@@ -458,9 +558,7 @@ function Talents:CreateButtonEssence(index, parent, essence)
 		elseif button == "RightButton" then
 			C_AzeriteEssence.ClearPendingActivationEssence();
 		end
-		Talents:UpdateButtonsEssence(Talents.buttons)
-		-- C_AzeriteEssence.ActivateEssence(self.talentID, self.milestoneID);
-		-- C_AzeriteEssence.SetPendingActivationEssence(self.talentID);
+		ArenaTalents:UpdateButtonsEssence(ArenaTalents.buttons)
 	end)
 
 	Button:SetScript("OnEnter", function(self)
@@ -476,7 +574,7 @@ function Talents:CreateButtonEssence(index, parent, essence)
 	return Button
 end
 
-function Talents:UpdateButtonsEssence(buttons)
+function ArenaTalents:UpdateButtonsEssence(buttons)
 	local pendingEssenceID = C_AzeriteEssence.GetPendingActivationEssence();
 	for i, button in pairs(buttons) do
 		if button.type == "essence" then
@@ -495,7 +593,7 @@ function Talents:UpdateButtonsEssence(buttons)
 	end
 end
 
-function Talents:CreateIconEssence(index, parent, milestoneInfo, mainParent)
+function ArenaTalents:CreateIconEssence(index, parent, milestoneInfo, mainParent)
 	local Icon = CreateFrame("Frame", "$parent.Icon"..index, parent)
 
 	if index == 1 then
@@ -561,6 +659,8 @@ function Talents:CreateIconEssence(index, parent, milestoneInfo, mainParent)
 	end)
 	--
 	Icon:SetScript("OnMouseUp", function(self, button)
+		if not self.unlocked or not C_AzeriteEssence.CanOpenUI() then return end
+
 		local pendingEssenceID = C_AzeriteEssence.GetPendingActivationEssence();
 		-- print(pendingEssenceID)
 		if button == "LeftButton" then
@@ -568,7 +668,7 @@ function Talents:CreateIconEssence(index, parent, milestoneInfo, mainParent)
 				C_AzeriteEssence.ActivateEssence(pendingEssenceID, self.milestoneID)
 				C_AzeriteEssence.ClearPendingActivationEssence()
 			else
-				Talents:ShowButtonsEssence(Talents.buttons, nil, mainParent.droplist, self.milestoneID, mainParent.scroll)
+				ArenaTalents:ShowButtonsEssence(ArenaTalents.buttons, nil, mainParent.droplist, self.milestoneID, mainParent.scroll)
 			end
 		end
 	end)
@@ -583,7 +683,7 @@ function Talents:CreateIconEssence(index, parent, milestoneInfo, mainParent)
 	return Icon
 end
 
-function Talents:UpdateIconsEssence(icons)
+function ArenaTalents:UpdateIconsEssence(icons)
 	for i, icon in pairs(icons) do
 		local essenceID = C_AzeriteEssence.GetMilestoneEssence(icon.milestoneID)
 		if essenceID then
@@ -595,7 +695,7 @@ function Talents:UpdateIconsEssence(icons)
 	end
 end
 
-function Talents:ShowButtonsEssence(buttons, ids, droplist, milestoneID, scrollFrame)
+function ArenaTalents:ShowButtonsEssence(buttons, ids, droplist, milestoneID, scrollFrame)
 	local height = 0
 
 	local button_list = {}
@@ -638,8 +738,9 @@ function Talents:ShowButtonsEssence(buttons, ids, droplist, milestoneID, scrollF
 
 	droplist:SetHeight(height)
 	droplist:Show()
-
+	self.scrollHolder:SetHeight(260)
 	if height < scrollFrame:GetHeight() then
+		self.scrollHolder:SetHeight(height + 20)
 		scrollFrame.bar:Hide()
 		scrollFrame.upbutton:Hide()
 		scrollFrame.downbutton:Hide()
@@ -650,7 +751,7 @@ function Talents:ShowButtonsEssence(buttons, ids, droplist, milestoneID, scrollF
 	scrollFrame:Show()
 end
 
-function Talents:CreateEssenceFrame(parent)
+function ArenaTalents:CreateEssenceFrame(parent)
 	frame = CreateFrame("Frame", "$parent.Essences", parent)
 
 	frame.icons = {}
@@ -708,11 +809,11 @@ function Talents:CreateEssenceFrame(parent)
 	--
 	self:UpdateIconsEssence(frame.icons)
 	frame:SetScript("OnEvent", function(self, event)
-		if Talents.buttons then
-			Talents:UpdateButtonsEssence(Talents.buttons)
+		if ArenaTalents.buttons then
+			ArenaTalents:UpdateButtonsEssence(ArenaTalents.buttons)
 		end
 		if self.icons then
-			Talents:UpdateIconsEssence(self.icons)
+			ArenaTalents:UpdateIconsEssence(self.icons)
 		end
 	end)
 
@@ -724,7 +825,7 @@ end
 MAX_TALENT_TIERS = 7
 NUM_TALENT_COLUMNS = 3
 
-function Talents:CreateButton(tier, column, talentID, parent, texture, name)
+function ArenaTalents:CreateButton(tier, column, talentID, parent, texture, name)
 	local talentID, name, texture, selected, available, _, _, _, _, _, grantedByAura = GetTalentInfo(tier, column, 1);
 
 	local Button = CreateFrame("Frame", "$parent.Button"..tier..column, parent)
@@ -785,7 +886,7 @@ function Talents:CreateButton(tier, column, talentID, parent, texture, name)
 	return Button
 end
 
-function Talents:UpdateButtons(buttons)
+function ArenaTalents:UpdateButtons(buttons)
 	for i, button in pairs(buttons) do
 		if button.type == "normal" then
 			local tierAvailable, selectedTalent, tierUnlockLevel = GetTalentTierInfo(button.tier, GetActiveSpecGroup())
@@ -805,7 +906,7 @@ function Talents:UpdateButtons(buttons)
 	end
 end
 
-function Talents:CreateIcon(tier, parent, mainParent)
+function ArenaTalents:CreateIcon(tier, parent, mainParent)
 	local Icon = CreateFrame("Frame", "$parent.Icon"..tier, parent)
 
 	Icon:SetWidth(38)
@@ -840,6 +941,9 @@ function Talents:CreateIcon(tier, parent, mainParent)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
 		if self.talentID then
 			GameTooltip:SetTalent(self.talentID)
+		else
+			GameTooltip:AddLine("Talent Slot");
+			GameTooltip:AddLine("Locked", RED_FONT_COLOR:GetRGB());
 		end
 		GameTooltip:Show();
 	end)
@@ -851,9 +955,9 @@ function Talents:CreateIcon(tier, parent, mainParent)
 	Icon:SetScript("OnMouseUp", function(self, button)
 		if button == "LeftButton" then
 			if self.enabled then
-				Talents:ShowButtons(Talents.buttons, self.ids, mainParent.droplist, mainParent.scroll)
+				ArenaTalents:ShowButtons(ArenaTalents.buttons, self.ids, mainParent.droplist, mainParent.scroll)
 			end
-			Talents:UpdateButtons(Talents.buttons)
+			ArenaTalents:UpdateButtons(ArenaTalents.buttons)
 		end
 	end)
 
@@ -864,7 +968,7 @@ function Talents:CreateIcon(tier, parent, mainParent)
 	return Icon
 end
 
-function Talents:UpdateIcons(icons)
+function ArenaTalents:UpdateIcons(icons)
 	local fixTexture = {
 		[611425] = 132115, -- Feral Affinity
 		[611424] = 132276, -- Guardian Affinity
@@ -899,7 +1003,7 @@ function Talents:UpdateIcons(icons)
 	end
 end
 
-function Talents:ShowButtons(buttons, ids, droplist,  scrollFrame)
+function ArenaTalents:ShowButtons(buttons, ids, droplist,  scrollFrame)
 	local height = 0
 
 	local button_list = {}
@@ -931,17 +1035,21 @@ function Talents:ShowButtons(buttons, ids, droplist,  scrollFrame)
 	end
 
 	droplist:SetHeight(height)
+	-- self.scrollHolder:SetHeight(height + 20)
 	droplist:Show()
 	scrollFrame:Show()
 
-	scrollFrame.bar:Hide()
-	scrollFrame.upbutton:Hide()
-	scrollFrame.downbutton:Hide()
+	if height < scrollFrame:GetHeight() then
+		self.scrollHolder:SetHeight(height + 20)
+		scrollFrame.bar:Hide()
+		scrollFrame.upbutton:Hide()
+		scrollFrame.downbutton:Hide()
+	end
 
 	button_list = table.wipe(button_list)
 end
 
-function Talents:CreateTalentsFrame(parent)
+function ArenaTalents:CreateTalentsFrame(parent)
 	frame = CreateFrame("Frame", "$parent.Talents", parent)
 
 	frame.icons = {}
@@ -981,16 +1089,16 @@ function Talents:CreateTalentsFrame(parent)
 	frame:SetHeight(height)
 	frame:SetWidth(width)
 
-	frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+	-- frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 	frame:RegisterEvent("PLAYER_TALENT_UPDATE")
 
 	self:UpdateIcons(frame.icons)
 	frame:SetScript("OnEvent", function(self)
-		if Talents.buttons then
-			Talents:UpdateButtons(Talents.buttons)
+		if ArenaTalents.buttons then
+			ArenaTalents:UpdateButtons(ArenaTalents.buttons)
 		end
 		if self.icons then
-			Talents:UpdateIcons(self.icons)
+			ArenaTalents:UpdateIcons(self.icons)
 		end
 	end)
 
@@ -999,10 +1107,10 @@ end
 
 -- FRAME
 
-function Talents:CreateMainFrame()
+function ArenaTalents:CreateMainFrame()
 	if not self.frame then
-		self.frame = CreateFrame("Frame", "ArenaTools", UIParent)
-		self.frame:SetPoint("CENTER", UIParent, "CENTER", 0, 200)
+		self.frame = CreateFrame("Frame", "ArenaTalents", UIParent)
+		self.frame:SetPoint(unpack(self.settings.position))
 		self.frame:EnableMouse(true)
 		self.frame:SetMovable(true)
 
@@ -1036,6 +1144,7 @@ function Talents:CreateMainFrame()
 		self.frame:SetScript("OnMouseUp", function(self, button)
 			if button == "LeftButton" and self.isMoving then
 				self:StopMovingOrSizing();
+				ArenaTalents.db.profile.position[1], ArenaTalents.db.profile.position[2], ArenaTalents.db.profile.position[3], ArenaTalents.db.profile.position[4], ArenaTalents.db.profile.position[5] = self:GetPoint(1)
 				self.isMoving = false;
 			end
 		end)
@@ -1044,18 +1153,35 @@ function Talents:CreateMainFrame()
 
 		self.frame.droplist = CreateFrame("Frame", "$parent.Droplist", self.frame.scroll, "SecureHandlerShowHideTemplate")
 		self.frame.droplist:SetWidth(148)
-
 		self.frame.droplist.icons = {}
+
+		self.scrollHolder = CreateFrame("Frame", "ArenaTalentsScroll", self.frame.scroll)
+		self.scrollHolder:SetSize(168, 260)
+		self.scrollHolder:SetPoint("TOP", self.frame, "BOTTOM", 0, 0)
+		self.scrollHolder:SetFrameStrata("BACKGROUND")
+		self.scrollHolder:SetBackdrop({
+			bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
+			edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+			tile     = true,
+			tileSize = 32,
+			edgeSize = 32,
+			insets   = { left = 8, right = 8, top = 8, bottom = 8 }
+		})
+		self.scrollHolder:SetBackdropColor(0, 0, 0, 1)
 
 		self.frame.scroll:SetSize(self.frame.droplist:GetWidth(), 240)
 		self.frame.scroll:Hide()
-		self.frame.scroll:SetPoint("TOP", self.frame, "BOTTOM")
+		self.frame.scroll:SetPoint("TOP", self.scrollHolder, "TOP", 0, -10)
 		self.frame.scroll:SetScrollChild(self.frame.droplist)
 
 		local scrollbarName = self.frame.scroll:GetName()
 		self.frame.scroll.bar = _G[scrollbarName.."ScrollBar"];
 		self.frame.scroll.upbutton = _G[scrollbarName.."ScrollBarScrollUpButton"];
 		self.frame.scroll.downbutton = _G[scrollbarName.."ScrollBarScrollDownButton"];
+
+		self.frame.scroll.bar:ClearAllPoints()
+		self.frame.scroll.bar:SetPoint("TOPLEFT", self.frame.scroll, "TOPRIGHT", 12, -16)
+		self.frame.scroll.bar:SetPoint("BOTTOMLEFT", self.frame.scroll, "BOTTOMRIGHT", 12, 16)
 
 		self.frame.droplist:SetScript("OnHide", function()
 			self.frame.scroll:Hide()
@@ -1071,7 +1197,7 @@ function Talents:CreateMainFrame()
 				local pendingEssenceID = C_AzeriteEssence.GetPendingActivationEssence();
 				if pendingEssenceID ~= 0 and not MouseIsOver(self) then
 					C_AzeriteEssence.ClearPendingActivationEssence()
-					ArenaTools.Talents:UpdateButtonsEssence(ArenaTools.Talents.buttons)
+					ArenaTalents.ArenaTalents:UpdateButtonsEssence(ArenaTalents.Talents.buttons)
 					return
 				end
 				if self.droplist:IsShown()
@@ -1107,7 +1233,7 @@ function Talents:CreateMainFrame()
 	return self.frame
 end
 
-function Talents:CreateEmptyFrame(parent, height)
+function ArenaTalents:CreateEmptyFrame(parent, height)
 	frame = CreateFrame("Frame", nil, parent)
 	frame:SetWidth(100)
 	frame:SetHeight(height or 20)
@@ -1115,7 +1241,7 @@ function Talents:CreateEmptyFrame(parent, height)
 	return frame
 end
 
-function Talents:ShowFrame()
+function ArenaTalents:ShowFrame()
 	local height, width = 0, 0
 	local lastFrame
 
@@ -1137,11 +1263,12 @@ function Talents:ShowFrame()
 		height = height + f:GetHeight()
 	end
 
+	self.frame:SetScale(self.settings.scale)
 	self.frame:SetSize(width * 1.1, height)
 	self.frame:Show()
 end
 
-function Talents:PLAYER_LOGIN()
+function ArenaTalents:PLAYER_LOGIN()
 	self:CreateMainFrame()
 
 	table.insert(self.frame.frames, self:CreatePvpTalentsFrame(self.frame))
@@ -1149,10 +1276,22 @@ function Talents:PLAYER_LOGIN()
 	table.insert(self.frame.frames, self:CreateEssenceFrame(self.frame))
 end
 
-function Talents:PLAYER_ENTERING_WORLD()
+function ArenaTalents:READY_CHECK()
+	if self.settings.showRC then
+		self:ShowFrame()
+	end
+end
+
+function ArenaTalents:READY_CHECK_CONFIRM(event, unit)
+	if self.settings.showRC and UnitIsUnit(unit, "player") then
+		self.frame:Hide()
+	end
+end
+
+function ArenaTalents:PLAYER_ENTERING_WORLD()
 	local _, instanceType = IsInInstance()
 
-	if instanceType == "arena" then
+	if instanceType == "arena" and self.settings.showArena then
 		self:ShowFrame()
 	end
 end

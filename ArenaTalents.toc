@@ -1,9 +1,9 @@
 ## Interface: 80300
-## Title: |cffFF7D0AArenaTools|r
-## Version: 1.0.0
+## Title: |cffFF7D0AArenaTalents|r
+## Version: 1.0
 ## Author: jokair9
-## Notes: Useful tools for Arena Players.
-## SavedVariables: ArenaToolsDB
+## Notes: Quickly change talents and essences.
+## SavedVariables: ArenaTalentsDB
 
 ## LIBS
 
@@ -23,8 +23,4 @@ libs\Ace3\LibDBIcon-1.0\LibDBIcon-1.0\lib.xml
 
 ## CORE
 
-Core.lua
-Config.lua
-
-Modules\Arena.lua
-Modules\Talents.lua
+ArenaTalents.lua
