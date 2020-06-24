@@ -125,8 +125,7 @@ function ArenaTalentsLDB.OnTooltipShow(tooltip)
 end
 
 function ArenaTalents:MinimapButton()
-	self.settings.minimap.hide = not self.settings.minimap.hide
-	if self.settings.minimap.hide then
+	if not self.settings.minimap.hide then
 		icon:Hide("ArenaTalentMB")
 	else
 		icon:Show("ArenaTalentMB")
@@ -342,23 +341,13 @@ function ArenaTalents:CreateIconPVP(index, parent, slotInfo, mainParent)
 	return Icon
 end
 
-local function idAlreadyInPairs(table, id)
-	for k, j in pairs(table) do
-		if id == j then
-			return true
-		end
-	end
-	return false
-end
-
 function ArenaTalents:UpdateIconsPVP(icons)
 	for i, icon in pairs(icons) do
 		local slotInfo = C_SpecializationInfo.GetPvpTalentSlotInfo(icon.slotIndex)
+		table.wipe(icon.ids)
 		if slotInfo then
 			for i, j in pairs(slotInfo.availableTalentIDs) do
-				if not idAlreadyInPairs(icon.ids, j) then
-					table.insert(icon.ids, j)
-				end
+				table.insert(icon.ids, j)
 			end
 		end
 		icon.enabled = slotInfo and slotInfo.enabled
